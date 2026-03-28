@@ -1,12 +1,13 @@
 """Web search retriever using DuckDuckGo."""
 
-from typing import List, Optional
+from typing import Any, List, Optional
 import logging
 
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
-from duckduckgo_search import DDGS
+from pydantic import Field
+from ddgs import DDGS
 
 logger = logging.getLogger(__name__)
 
@@ -19,27 +20,18 @@ class DuckDuckGoRetriever(BaseRetriever):
     web searches and returns results as LangChain Document objects.
     """
     
-    def __init__(
-        self,
-        top_k: int = 5,
-        max_snippet_length: int = 500,
-        region: str = "wt-wt",
-        safesearch: str = "moderate"
-    ):
-        """
-        Initialize the DuckDuckGo retriever.
-        
-        Args:
-            top_k: Number of top results to retrieve.
-            max_snippet_length: Maximum length of text snippets.
-            region: DuckDuckGo region code.
-            safesearch: Safe search setting ('on', 'moderate', 'off').
-        """
-        super().__init__()
-        self.top_k = top_k
-        self.max_snippet_length = max_snippet_length
-        self.region = region
-        self.safesearch = safesearch
+    top_k: int = Field(default=5, description="Number of top results to retrieve")
+    max_snippet_length: int = Field(default=500, description="Maximum length of text snippets")
+    region: str = Field(default="wt-wt", description="DuckDuckGo region code")
+    safesearch: str = Field(default="moderate", description="Safe search setting ('on', 'moderate', 'off')")
+    
+    model_config = {
+        "arbitrary_types_allowed": True
+    }
+    
+    def model_post_init(self, __context: Any) -> None:
+        """Initialize after Pydantic validation."""
+        logger.info(f"DuckDuckGoRetriever init: top_k={self.top_k}, max_snippet_length={self.max_snippet_length}, region={self.region}, safesearch={self.safesearch}")
     
     def _search_duckduckgo(self, query: str) -> List[dict]:
         """
@@ -53,12 +45,14 @@ class DuckDuckGoRetriever(BaseRetriever):
         """
         try:
             results = []
+            
+            # Try news search first
             with DDGS() as ddgs:
                 search_results = ddgs.news(
-                    keywords=query,
+                    query,
+                    max_results=self.top_k,
                     region=self.region,
-                    safesearch=self.safesearch,
-                    max_results=self.top_k
+                    safesearch=self.safesearch
                 )
                 
                 for result in search_results:
@@ -73,10 +67,10 @@ class DuckDuckGoRetriever(BaseRetriever):
             if not results:
                 with DDGS() as ddgs:
                     search_results = ddgs.text(
-                        keywords=query,
+                        query,
+                        max_results=self.top_k,
                         region=self.region,
-                        safesearch=self.safesearch,
-                        max_results=self.top_k
+                        safesearch=self.safesearch
                     )
                     
                     for result in search_results:

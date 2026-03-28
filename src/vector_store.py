@@ -1,34 +1,60 @@
-"""Vector store implementation using FAISS with OpenAI embeddings."""
+"""Vector store implementation using FAISS with multiple embedding providers."""
 
 import os
 import pickle
 from pathlib import Path
 from typing import List, Optional, Union
 
-from langchain_openai import OpenAIEmbeddings
+from dotenv import load_dotenv
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 
+load_dotenv()
+
+
+def get_embeddings():
+    """Get embeddings instance based on EMBEDDING_PROVIDER env var."""
+    provider = os.getenv("EMBEDDING_PROVIDER", "openai").lower()
+    
+    if provider == "openai":
+        from langchain_openai import OpenAIEmbeddings
+        model = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+        return OpenAIEmbeddings(model=model)
+    elif provider == "google":
+        from langchain_google_genai import GoogleGenerativeAIEmbeddings
+        model = os.getenv("GOOGLE_EMBEDDING_MODEL", "models/embedding-001")
+        api_key = os.getenv("GOOGLE_API_KEY")
+        return GoogleGenerativeAIEmbeddings(model=model, google_api_key=api_key)
+    elif provider == "azure":
+        from langchain_openai import OpenAIEmbeddings
+        return OpenAIEmbeddings(
+            model=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-3-small"),
+            api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+            azure_endpoint=os.getenv("AZURE_OPENAI_EMBEDDING_ENDPOINT"),
+            api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01")
+        )
+    else:
+        raise ValueError(f"Unsupported embedding provider: {provider}")
+
 
 class VectorStoreManager:
-    """Manage FAISS vector store with OpenAI embeddings."""
+    """Manage FAISS vector store with configurable embeddings."""
     
     def __init__(
         self,
-        embedding_model: str = "text-embedding-3-small",
+        embedding_model: Optional[str] = None,
         vectorstore_path: Optional[str] = None
     ):
         """
         Initialize the vector store manager.
         
         Args:
-            embedding_model: OpenAI embedding model to use.
+            embedding_model: Deprecated, kept for compatibility.
             vectorstore_path: Optional path to load/save vector store.
         """
-        self.embedding_model = embedding_model
         self.vectorstore_path = vectorstore_path
-        self.embeddings = OpenAIEmbeddings(model=embedding_model)
+        self.embeddings = get_embeddings()
         self._vectorstore: Optional[FAISS] = None
     
     def create_vectorstore(
@@ -171,17 +197,17 @@ class VectorStoreManager:
 
 def create_vectorstore(
     documents: List[Document],
-    embedding_model: str = "text-embedding-3-small"
+    embedding_model: Optional[str] = None
 ) -> FAISS:
     """
     Convenience function to create a vector store.
     
     Args:
         documents: Documents to embed.
-        embedding_model: OpenAI embedding model.
+        embedding_model: Deprecated, ignored. Use EMBEDDING_PROVIDER env var.
         
     Returns:
         FAISS vector store.
     """
-    manager = VectorStoreManager(embedding_model=embedding_model)
+    manager = VectorStoreManager()
     return manager.create_vectorstore(documents)

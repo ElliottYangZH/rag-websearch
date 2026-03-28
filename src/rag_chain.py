@@ -5,13 +5,13 @@ import logging
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 
-from langchain_openai import ChatOpenAI
 from langchain_classic.chains import RetrievalQA
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
 
 from dotenv import load_dotenv
+from src.llm_provider import get_llm_provider
 
 load_dotenv()
 
@@ -29,37 +29,37 @@ class RAGChain:
     def __init__(
         self,
         retriever: BaseRetriever,
-        model_name: str = "gpt-4o-mini",
+        model_name: Optional[str] = None,
         temperature: float = 0,
         max_tokens: int = 1000,
         return_source_documents: bool = True,
-        return_direct: bool = False
+        llm_provider: Optional[str] = None
     ):
         """
         Initialize the RAG chain.
         
         Args:
             retriever: Retriever to fetch relevant documents.
-            model_name: OpenAI model to use.
+            model_name: Model to use (defaults to LLM_MODEL env var or "gpt-4o-mini").
             temperature: Sampling temperature (0 = factual).
             max_tokens: Maximum tokens in response.
             return_source_documents: Whether to return source documents.
-            return_direct: Whether to return direct LLM output.
+            llm_provider: LLM provider to use (defaults to LLM_PROVIDER env var or "openai").
         """
         self.retriever = retriever
-        self.model_name = model_name
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.return_source_documents = return_source_documents
-        self.return_direct = return_direct
         
-        # Initialize LLM
-        self.llm = ChatOpenAI(
-            model=model_name,
+        # Initialize LLM using the factory
+        llm_provider_instance = get_llm_provider(
+            provider=llm_provider,
+            model_name=model_name,
             temperature=temperature,
-            max_tokens=max_tokens,
-            api_key=os.getenv("OPENAI_API_KEY")
+            max_tokens=max_tokens
         )
+        self.llm = llm_provider_instance.get_llm()
+        self.model_name = model_name or os.getenv("LLM_MODEL", "gpt-4o-mini")
         
         # Create the QA chain
         self.qa_chain = RetrievalQA.from_chain_type(
@@ -67,7 +67,6 @@ class RAGChain:
             chain_type="stuff",
             retriever=retriever,
             return_source_documents=return_source_documents,
-            return_direct=return_direct,
             chain_type_kwargs={
                 "document_variable_name": "context"
             }
@@ -171,18 +170,20 @@ class RAGChain:
 
 def create_rag_chain(
     retriever: BaseRetriever,
-    model_name: str = "gpt-4o-mini",
+    model_name: Optional[str] = None,
     temperature: float = 0,
-    max_tokens: int = 1000
+    max_tokens: int = 1000,
+    llm_provider: Optional[str] = None
 ) -> RAGChain:
     """
     Create a RAG chain.
     
     Args:
         retriever: Retriever to fetch relevant documents.
-        model_name: OpenAI model to use.
+        model_name: Model to use (defaults to LLM_MODEL env var).
         temperature: Sampling temperature.
         max_tokens: Maximum tokens in response.
+        llm_provider: LLM provider to use.
         
     Returns:
         RAGChain instance.
@@ -191,5 +192,6 @@ def create_rag_chain(
         retriever=retriever,
         model_name=model_name,
         temperature=temperature,
-        max_tokens=max_tokens
+        max_tokens=max_tokens,
+        llm_provider=llm_provider
     )

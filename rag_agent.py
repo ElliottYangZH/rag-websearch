@@ -121,9 +121,10 @@ class RAGAgent:
         local_weight: float = 0.7,
         web_weight: float = 0.3,
         k: int = 4,
-        model_name: str = "gpt-4o-mini",
+        model_name: Optional[str] = None,
         use_cache: bool = True,
-        cache_ttl: int = 3600
+        cache_ttl: int = 3600,
+        llm_provider: Optional[str] = None
     ):
         """
         Initialize the RAG agent.
@@ -134,16 +135,18 @@ class RAGAgent:
             local_weight: Weight for local retrieval (0-1).
             web_weight: Weight for web retrieval (0-1).
             k: Number of documents to retrieve.
-            model_name: OpenAI model to use.
+            model_name: LLM model to use (defaults to LLM_MODEL env var).
             use_cache: Whether to use query caching.
             cache_ttl: Cache time-to-live in seconds.
+            llm_provider: LLM provider to use (openai, azure, anthropic, ollama, google, aws_bedrock).
         """
         self.docs_path = docs_path
         self.vectorstore_path = vectorstore_path
         self.local_weight = local_weight
         self.web_weight = web_weight
         self.k = k
-        self.model_name = model_name
+        self.model_name = model_name or os.getenv("LLM_MODEL", "gpt-4o-mini")
+        self.llm_provider = llm_provider or os.getenv("LLM_PROVIDER", "openai")
         
         # Initialize cache
         self.use_cache = use_cache
@@ -156,12 +159,46 @@ class RAGAgent:
         self._ensemble_retriever = None
         self._rag_chain: Optional[RAGChain] = None
         
-        # Check API key
-        if not os.getenv("OPENAI_API_KEY"):
-            raise ValueError(
-                "OPENAI_API_KEY not found in environment. "
-                "Please set it in .env file or environment."
-            )
+        # Check API key based on provider
+        self._check_api_key()
+    
+    def _check_api_key(self):
+        """Check if required API key is set for the current provider."""
+        provider = self.llm_provider.lower()
+        
+        if provider == "openai":
+            if not os.getenv("OPENAI_API_KEY"):
+                raise ValueError(
+                    "OPENAI_API_KEY not found in environment. "
+                    "Please set it in .env file or environment."
+                )
+        elif provider == "azure":
+            if not os.getenv("AZURE_OPENAI_ENDPOINT"):
+                raise ValueError(
+                    "AZURE_OPENAI_ENDPOINT not found in environment. "
+                    "Please set it in .env file or environment."
+                )
+        elif provider == "anthropic":
+            if not os.getenv("ANTHROPIC_API_KEY"):
+                raise ValueError(
+                    "ANTHROPIC_API_KEY not found in environment. "
+                    "Please set it in .env file or environment."
+                )
+        elif provider == "google":
+            if not os.getenv("GOOGLE_API_KEY"):
+                raise ValueError(
+                    "GOOGLE_API_KEY not found in environment. "
+                    "Please set it in .env file or environment."
+                )
+        elif provider == "aws_bedrock":
+            if not os.getenv("AWS_ACCESS_KEY_ID") or not os.getenv("AWS_SECRET_ACCESS_KEY"):
+                raise ValueError(
+                    "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY not found in environment. "
+                    "Please set them in .env file or environment."
+                )
+        elif provider == "ollama":
+            # Ollama runs locally - no API key required
+            logger.info("Ollama provider selected - no API key required (runs locally)")
     
     def _initialize_document_loader(self) -> DocumentLoader:
         """Initialize the document loader."""
@@ -247,9 +284,10 @@ class RAGAgent:
             ensemble = self._initialize_ensemble_retriever()
             self._rag_chain = RAGChain(
                 retriever=ensemble,
-                model_name=self.model_name
+                model_name=self.model_name,
+                llm_provider=self.llm_provider
             )
-            logger.info("RAG chain initialized")
+            logger.info(f"RAG chain initialized with provider: {self.llm_provider}")
         
         return self._rag_chain
     
@@ -313,6 +351,7 @@ class RAGAgent:
         print("RAG WebSearch Agent")
         print("=" * 60)
         print(f"Local documents: {self.docs_path}")
+        print(f"Provider: {self.llm_provider}")
         print(f"Model: {self.model_name}")
         print(f"Retrieval weights: local={self.local_weight}, web={self.web_weight}")
         print(f"Caching: {'enabled' if self.use_cache else 'disabled'}")
@@ -379,6 +418,9 @@ class RAGAgent:
             except KeyboardInterrupt:
                 print("\nGoodbye!")
                 break
+            except EOFError:
+                print("\nGoodbye!")
+                break
             except Exception as e:
                 logger.error(f"Error processing query: {e}", exc_info=True)
                 print(f"\nError: {e}")
@@ -394,7 +436,8 @@ def get_agent(
     local_weight: float = 0.7,
     web_weight: float = 0.3,
     k: int = 4,
-    model_name: str = "gpt-4o-mini"
+    model_name: Optional[str] = None,
+    llm_provider: Optional[str] = None
 ) -> RAGAgent:
     """Get or create the global RAG agent instance."""
     global _agent
@@ -406,7 +449,8 @@ def get_agent(
             local_weight=local_weight,
             web_weight=web_weight,
             k=k,
-            model_name=model_name
+            model_name=model_name,
+            llm_provider=llm_provider
         )
     
     return _agent
@@ -418,7 +462,8 @@ def ask(
     vectorstore_path: str = "vectorstore",
     local_weight: float = 0.7,
     web_weight: float = 0.3,
-    k: int = 4
+    k: int = 4,
+    llm_provider: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Convenience function to ask a question.
@@ -430,6 +475,7 @@ def ask(
         local_weight: Weight for local retrieval.
         web_weight: Weight for web retrieval.
         k: Number of documents to retrieve.
+        llm_provider: LLM provider to use.
         
     Returns:
         Dictionary with answer and sources.
@@ -439,7 +485,8 @@ def ask(
         vectorstore_path=vectorstore_path,
         local_weight=local_weight,
         web_weight=web_weight,
-        k=k
+        k=k,
+        llm_provider=llm_provider
     )
     return agent.ask(query)
 

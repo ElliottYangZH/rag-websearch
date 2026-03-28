@@ -1,11 +1,12 @@
 """Ensemble retriever combining local and web retrievers."""
 
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional
 import logging
 
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
+from pydantic import Field
 
 logger = logging.getLogger(__name__)
 
@@ -18,43 +19,24 @@ class WeightedEnsembleRetriever(BaseRetriever):
     results from multiple retrievers are merged and re-ranked.
     """
     
-    def __init__(
-        self,
-        local_retriever: BaseRetriever,
-        web_retriever: BaseRetriever,
-        local_weight: float = 0.7,
-        web_weight: float = 0.3,
-        k: int = 4
-    ):
-        """
-        Initialize the ensemble retriever.
-        
-        Args:
-            local_retriever: Retriever for local documents.
-            web_retriever: Retriever for web search results.
-            local_weight: Weight for local results (0-1).
-            web_weight: Weight for web results (0-1).
-            k: Number of results to return.
-        """
-        super().__init__()
-        
-        if not 0 <= local_weight <= 1 or not 0 <= web_weight <= 1:
+    local_retriever: Any = Field(description="Retriever for local documents")
+    web_retriever: Any = Field(description="Retriever for web search results")
+    local_weight: float = Field(default=0.7)
+    web_weight: float = Field(default=0.3)
+    k: int = Field(default=4)
+    
+    model_config = {
+        "arbitrary_types_allowed": True
+    }
+    
+    def model_post_init(self, __context: Any) -> None:
+        """Initialize after Pydantic validation."""
+        # Validate weights
+        if not 0 <= self.local_weight <= 1 or not 0 <= self.web_weight <= 1:
             raise ValueError("Weights must be between 0 and 1")
         
-        if abs(local_weight + web_weight - 1.0) > 1e-6:
+        if abs(self.local_weight + self.web_weight - 1.0) > 1e-6:
             raise ValueError("Weights must sum to 1")
-        
-        self.local_retriever = local_retriever
-        self.web_retriever = web_retriever
-        self.local_weight = local_weight
-        self.web_weight = web_weight
-        self.k = k
-        
-        # Use LangChain's EnsembleRetriever under the hood
-        self._ensemble = LangChainEnsembleRetriever(
-            retrievers=[local_retriever, web_retriever],
-            weights=[local_weight, web_weight]
-        )
     
     def _get_relevant_documents(
         self,

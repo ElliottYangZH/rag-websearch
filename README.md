@@ -6,8 +6,9 @@ A Retrieval-Augmented Generation (RAG) pipeline that combines local documents wi
 
 - **Local Document Retrieval**: Load and index PDFs, Markdown, and text files
 - **Live Web Search**: DuckDuckGo integration (no API key required)
-- **Ensemble Retrieval**: Combines local (70%) and web (30%) results
-- **Grounded Answers**: GPT-4o-mini generates answers with citations
+- **Ensemble Retrieval**: Combines local (70%) and web (30%) results with Reciprocal Rank Fusion
+- **Multi-Provider LLM**: Supports OpenAI, Azure, Anthropic, Google, AWS Bedrock, and Ollama
+- **Multi-Provider Embeddings**: Supports OpenAI, Google, and Azure embeddings
 - **Query Caching**: In-memory cache for repeated queries
 - **Logging**: All queries and retrieved documents are logged
 
@@ -22,13 +23,48 @@ py -3.12 -m pip install -r requirements.txt
 
 ### 2. Configure API Key
 
-Edit the `.env` file and add your OpenAI API key:
+Edit the `.env` file and configure your LLM provider:
 
+**OpenAI (default):**
 ```env
+LLM_PROVIDER=openai
+LLM_MODEL=gpt-4o-mini
 OPENAI_API_KEY=sk-your-openai-api-key-here
 ```
 
-Get your API key from: https://platform.openai.com/api-keys
+**Azure OpenAI:**
+```env
+LLM_PROVIDER=azure
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_API_KEY=your-key
+AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini
+```
+
+**Anthropic Claude:**
+```env
+LLM_PROVIDER=anthropic
+ANTHROPIC_API_KEY=sk-ant-api-key
+```
+
+**Google Gemini:**
+```env
+LLM_PROVIDER=google
+GOOGLE_API_KEY=your-google-api-key
+```
+
+**AWS Bedrock:**
+```env
+LLM_PROVIDER=aws_bedrock
+AWS_ACCESS_KEY_ID=your-access-key
+AWS_SECRET_ACCESS_KEY=your-secret-key
+AWS_REGION=us-east-1
+```
+
+**Ollama (local):**
+```env
+LLM_PROVIDER=ollama
+LLM_MODEL=llama2
+```
 
 ### 3. Add Documents (Optional)
 
@@ -83,7 +119,8 @@ agent = RAGAgent(
     local_weight=0.7,
     web_weight=0.3,
     k=4,
-    model_name="gpt-4o-mini",
+    llm_provider="openai",    # or "azure", "anthropic", "google", "aws_bedrock", "ollama"
+    model_name="gpt-4o-mini",  # defaults to LLM_MODEL env var
     use_cache=True,
     cache_ttl=3600
 )
@@ -109,7 +146,9 @@ User Query → Ensemble Retriever → [Local FAISS + DuckDuckGo]
                                        ↓
                               Retrieved Documents
                                        ↓
-                              GPT-4o-mini (LLM)
+                         Multi-Provider LLM (configurable)
+                              OpenAI / Azure / Anthropic /
+                              Google / AWS Bedrock / Ollama
                                        ↓
                            Grounded Answer with Citations
 ```
@@ -119,10 +158,11 @@ User Query → Ensemble Retriever → [Local FAISS + DuckDuckGo]
 | Component | Description |
 |-----------|-------------|
 | `src/document_loader.py` | Load PDFs, Markdown, text files |
-| `src/vector_store.py` | FAISS vector store with OpenAI embeddings |
+| `src/vector_store.py` | FAISS vector store with configurable embeddings |
 | `src/web_retriever.py` | DuckDuckGo search retriever |
 | `src/ensemble_retriever.py` | Combine local + web with weighted RRF |
 | `src/rag_chain.py` | RAG chain orchestration |
+| `src/llm_provider.py` | Multi-provider LLM factory (OpenAI, Azure, Anthropic, Google, AWS, Ollama) |
 | `rag_agent.py` | Main CLI interface with caching and logging |
 
 ## Configuration
@@ -131,7 +171,21 @@ User Query → Ensemble Retriever → [Local FAISS + DuckDuckGo]
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `OPENAI_API_KEY` | OpenAI API key | Required |
+| `LLM_PROVIDER` | LLM provider (openai, azure, anthropic, google, aws_bedrock, ollama) | "openai" |
+| `LLM_MODEL` | Model name (provider-specific) | "gpt-4o-mini" |
+| `LLM_TEMPERATURE` | Sampling temperature | 0 |
+| `OPENAI_API_KEY` | OpenAI API key | Required (for openai provider) |
+| `AZURE_OPENAI_ENDPOINT` | Azure OpenAI endpoint | Required (for azure provider) |
+| `AZURE_OPENAI_API_KEY` | Azure OpenAI API key | Required (for azure provider) |
+| `AZURE_OPENAI_DEPLOYMENT` | Azure deployment name | Required (for azure provider) |
+| `ANTHROPIC_API_KEY` | Anthropic API key | Required (for anthropic provider) |
+| `GOOGLE_API_KEY` | Google API key | Required (for google provider) |
+| `AWS_ACCESS_KEY_ID` | AWS access key | Required (for aws_bedrock provider) |
+| `AWS_SECRET_ACCESS_KEY` | AWS secret key | Required (for aws_bedrock provider) |
+| `AWS_REGION` | AWS region | "us-east-1" |
+| `EMBEDDING_PROVIDER` | Embeddings provider (openai, google, azure) | "openai" |
+| `OPENAI_EMBEDDING_MODEL` | OpenAI embedding model | "text-embedding-3-small" |
+| `GOOGLE_EMBEDDING_MODEL` | Google embedding model | "models/embedding-001" |
 | `LOG_LEVEL` | Logging level | INFO |
 
 ### RAGAgent Parameters
@@ -143,7 +197,8 @@ User Query → Ensemble Retriever → [Local FAISS + DuckDuckGo]
 | `local_weight` | Weight for local retrieval | 0.7 |
 | `web_weight` | Weight for web retrieval | 0.3 |
 | `k` | Number of documents to retrieve | 4 |
-| `model_name` | OpenAI model | "gpt-4o-mini" |
+| `llm_provider` | LLM provider to use | "openai" |
+| `model_name` | LLM model (defaults to LLM_MODEL env var) | "gpt-4o-mini" |
 | `use_cache` | Enable query caching | True |
 | `cache_ttl` | Cache TTL in seconds | 3600 |
 
@@ -171,7 +226,8 @@ rag-websearch/
 │   ├── vector_store.py
 │   ├── web_retriever.py
 │   ├── ensemble_retriever.py
-│   └── rag_chain.py
+│   ├── rag_chain.py
+│   └── llm_provider.py                 # Multi-provider LLM factory
 ├── logs/                               # Log files
 ├── vectorstore/                        # Persisted vector store
 ├── rag_agent.py                        # Main CLI
@@ -182,7 +238,8 @@ rag-websearch/
 ## Important Notes
 
 - **Python Version**: Use Python 3.12 with this project (`py -3.12`)
-- **OpenAI API Key**: Required for embeddings and LLM
+- **LLM Provider**: Configure via `LLM_PROVIDER` env var (default: OpenAI)
+- **API Keys**: Required based on your chosen provider (see Configuration section)
 - **DuckDuckGo**: No API key required for web search
 
 ## License
