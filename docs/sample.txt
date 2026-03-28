@@ -1,0 +1,25 @@
+Sample Text Document for RAG Testing
+
+This is a simple text file used for testing the RAG pipeline.
+
+Key Points:
+- Document loaders can handle multiple file formats
+- Text files are the simplest format to process
+- Chunks from text files can still provide valuable context
+- The RAG pipeline should correctly retrieve and cite this content
+
+Testing Scenarios:
+1. Query about "text file" or "sample" should retrieve this document
+2. The source metadata should show "docs/sample.txt"
+3. The content should be included in the context window
+
+Additional Information:
+RAG stands for Retrieval-Augmented Generation. It combines:
+- Retrieval: Finding relevant documents
+- Augmentation: Adding retrieved context to the prompt
+- Generation: Using an LLM to generate the final answer
+
+This hybrid approach helps overcome limitations of pure LLM systems:
+- Knowledge cutoff: RAG can provide up-to-date information
+- Hallucination: Grounded answers are more factual
+- Attribution: Sources can be cited for verification
