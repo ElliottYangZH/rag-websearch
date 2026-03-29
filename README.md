@@ -11,8 +11,29 @@ A Retrieval-Augmented Generation (RAG) pipeline that combines local documents wi
 - **Multi-Provider Embeddings**: Supports OpenAI, Google, and Azure embeddings
 - **Query Caching**: In-memory cache for repeated queries
 - **Logging**: All queries and retrieved documents are logged
+- **Reusable Utilities**: `websearch_utils.py` - standalone web search module for any project
 
 ## Quick Start
+
+### Using websearch_utils.py in ANY Project
+
+Copy [`websearch_utils.py`](websearch_utils.py) to your new project:
+
+```python
+from websearch_utils import websearch_qa
+
+# Works with any LLM provider
+result = websearch_qa("Latest AI news?", provider="anthropic")
+print(result["answer"])
+
+# Or create a chain for more control
+from websearch_utils import create_websearch_chain
+
+chain = create_websearch_chain(provider="openai", model_name="gpt-4o-mini")
+result = chain.invoke({"query": "What is Python?"})
+```
+
+Supported providers: `openai`, `anthropic`, `google`, `azure`, `ollama`
 
 ### 1. Install Dependencies
 
